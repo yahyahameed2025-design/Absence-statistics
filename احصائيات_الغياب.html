@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- إعدادات تطبيق الويب PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>إحصائيات الغياب - لوحة المؤشرات</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Tajawal', 'sans-serif'] },
+                    colors: {
+                        glass: 'rgba(255, 255, 255, 0.7)',
+                        glassDark: 'rgba(255, 255, 255, 0.9)',
+                    },
+                    boxShadow: { glass: '0 10px 30px 0 rgba(31, 38, 135, 0.1)' },
+                    animation: {
+                        blob: 'blob 7s infinite',
+                        fade: 'fadeIn 0.5s ease-out forwards',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(15px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="dark-theme.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
+
+        body {
+            font-family: 'Tajawal', sans-serif;
+        }
+
+        .animation-delay-2000 {
+            animation-delay: 2s;
+        }
+
+        .animation-delay-4000 {
+            animation-delay: 4s;
+        }
+
+        /* Glassmorphism Classes */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            border-radius: 1.5rem;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-panel:hover {
+            box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .glass-nav-btn {
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 9999px;
+            /* Pill */
+            color: #4b5563;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-nav-btn:hover {
+            background: rgba(255, 255, 255, 0.9);
+            transform: scale(1.05);
+            box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.2);
+            color: #4f46e5;
+        }
+
+        .glass-nav-btn.active {
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.5);
+            transform: scale(1.05);
+        }
+
+        /* Custom Scrollbar for tables */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.5);
+            border-radius: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(107, 114, 128, 0.8);
+        }
+
+        @media print {
+            body {
+                background: #ffffff !important;
+            }
+
+            .no-print,
+            nav,
+            .fixed {
+                display: none !important;
+            }
+
+            .print-only {
+                display: block !important;
+            }
+
+            .glass-panel {
+                box-shadow: none !important;
+                border: 1px solid #e5e7eb !important;
+                background: transparent !important;
+                page-break-inside: avoid;
+                filter: none !important;
+                backdrop-filter: none !important;
+            }
+
+            canvas {
+                max-width: 100% !important;
+                page-break-inside: avoid;
+            }
+
+            table {
+                width: 100% !important;
+                page-break-inside: auto;
+            }
+
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+        }
+
+        .print-only {
+            display: none;
+        }
+
+        /* Loading Overlay */
+        #loadingOverlay {
+            z-index: 9999;
+        }
+
+        .modern-spinner {
+            width: 70px;
+            height: 70px;
+            border: 6px solid #e0e7ff;
+            border-top: 6px solid #6366f1;
+            border-radius: 50%;
+            animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.5));
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body
+    class="min-h-screen text-gray-800 relative z-0 bg-slate-50 overflow-x-hidden selection:bg-indigo-200 selection:text-indigo-900">
+
+    <!-- Animated Blob Background -->
+    <div
+        class="fixed inset-0 z-[-1] overflow-hidden bg-gradient-to-br from-indigo-50/80 via-purple-50/80 to-blue-50/80">
+        <div
+            class="absolute top-[-10%] left-[-10%] w-[40vw] h-[40vw] max-w-[500px] max-h-[500px] bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob">
+        </div>
+        <div
+            class="absolute top-[10%] right-[-10%] w-[35vw] h-[35vw] max-w-[400px] max-h-[400px] bg-indigo-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-2000">
+        </div>
+        <div
+            class="absolute bottom-[-10%] left-[20%] w-[40vw] h-[40vw] max-w-[500px] max-h-[500px] bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-4000">
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingOverlay"
+        class="fixed inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-md transition-all duration-500">
+        <div class="modern-spinner mb-6"></div>
+        <h3 class="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-l from-indigo-600 to-purple-600">
+            جاري جلب إحصائيات الغياب...</h3>
+        <p class="text-gray-600 font-medium mt-3 bg-white/50 px-4 py-1 rounded-full">يرجى الانتظار لتجهيز وتحليل
+            البيانات</p>
+    </div>
+
+    <div class="p-4 md:p-8 max-w-7xl mx-auto animate-fade">
+        <!-- Print Header -->
+        <div class="print-only text-center border-b-2 border-indigo-200 pb-4 mb-6">
+            <h1 class="text-2xl font-black text-indigo-900 mb-1">مملكة البحرين - وزارة التربية والتعليم</h1>
+            <h2 class="text-lg font-bold text-gray-700">التقرير الشامل للمؤشرات وإحصائيات الغياب اليومية</h2>
+            <p class="text-base text-gray-600 mt-2 font-medium" id="printDate"></p>
+        </div>
+
+        <!-- Navigation (Floating Pill style) -->
+        <nav class="mb-8 flex flex-wrap justify-center gap-3 no-print relative z-10 sticky top-4">
+            <div
+                class="glass-panel px-3 py-3 flex gap-2 rounded-full justify-center flex-wrap shadow-lg shadow-indigo-100/50">
+                <button onclick="switchView('dashboard')" id="btn-dashboard"
+                    class="glass-nav-btn active px-6 py-2.5 font-bold flex items-center gap-2 outline-none">
+                    <i class="fas fa-chart-pie"></i> <span class="hidden sm:inline">لوحة المؤشرات</span>
+                </button>
+                <button onclick="switchView('detailed')" id="btn-detailed"
+                    class="glass-nav-btn px-6 py-2.5 font-bold flex items-center gap-2 outline-none">
+                    <i class="fas fa-table"></i> <span class="hidden sm:inline">التقرير المفصل</span>
+                </button>
+                <button onclick="switchView('numerical')" id="btn-numerical"
+                    class="glass-nav-btn px-6 py-2.5 font-bold flex items-center gap-2 outline-none">
+                    <i class="fas fa-th-list"></i> <span class="hidden sm:inline">المصفوفة العددية</span>
+                </button>
+                <button onclick="switchView('leakers')" id="btn-leakers"
+                    class="glass-nav-btn px-6 py-2.5 font-bold flex items-center gap-2 outline-none">
+                    <i class="fas fa-user-slash text-red-400"></i> <span class="hidden sm:inline">أكثر الطلاب
+                        غياباً</span>
+                </button>
+            </div>
+        </nav>
+
+        <div class="views-container z-0 relative">
+
+            <!-- Dashboard View -->
+            <div id="view-dashboard" class="space-y-6 animate-fade">
+                <!-- Header & Filters -->
+                <div class="glass-panel p-5 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-200">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h2
+                            class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-l from-indigo-800 to-purple-800">
+                            ملخص المؤشرات اليومية</h2>
+                    </div>
+                    <div
+                        class="flex items-center gap-3 no-print bg-white/40 p-2 rounded-2xl border border-white/50 backdrop-blur-md">
+                        <button onclick="changeDate('dashDate', -1)"
+                            class="w-10 h-10 bg-white hover:bg-indigo-50 rounded-xl shadow text-gray-600 transition"><i
+                                class="fas fa-chevron-right"></i></button>
+                        <input type="date" id="dashDate" onchange="updateDashboard()"
+                            class="px-3 py-2 bg-transparent outline-none focus:ring-2 focus:ring-indigo-300 rounded-lg font-black text-indigo-900 text-center cursor-pointer">
+                        <button onclick="changeDate('dashDate', 1)"
+                            class="w-10 h-10 bg-white hover:bg-indigo-50 rounded-xl shadow text-gray-600 transition"><i
+                                class="fas fa-chevron-left"></i></button>
+                        <button onclick="window.print()"
+                            class="bg-gray-800 text-white px-5 py-2 rounded-xl hover:bg-black transition flex items-center gap-2 font-bold ml-2 shadow-lg">
+                            <i class="fas fa-print"></i> <span class="hidden md:inline">طباعة</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div class="glass-panel p-6 flex flex-col justify-center relative overflow-hidden group">
+                        <div
+                            class="absolute -right-6 -top-6 w-24 h-24 bg-red-100/50 rounded-full blur-xl group-hover:bg-red-200/60 transition-colors">
+                        </div>
+                        <div class="flex items-center gap-4 relative z-10">
+                            <div
+                                class="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-400 to-rose-600 flex items-center justify-center text-white text-2xl shadow-lg shadow-red-200/50">
+                                <i class="fas fa-users-slash"></i></div>
+                            <div>
+                                <p class="text-base text-gray-500 font-bold mb-1">إجمالي الغياب</p>
+                                <h3 class="text-3xl md:text-4xl font-black text-gray-800" id="stat-total-absent">0</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 flex flex-col justify-center relative overflow-hidden group">
+                        <div
+                            class="absolute -right-6 -top-6 w-24 h-24 bg-indigo-100/50 rounded-full blur-xl group-hover:bg-indigo-200/60 transition-colors">
+                        </div>
+                        <div class="flex items-center gap-4 relative z-10">
+                            <div
+                                class="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-400 to-blue-600 flex items-center justify-center text-white text-2xl shadow-lg shadow-indigo-200/50">
+                                <i class="fas fa-school"></i></div>
+                            <div>
+                                <p class="text-base text-gray-500 font-bold mb-1">السعة الاستيعابية</p>
+                                <h3 class="text-3xl md:text-4xl font-black text-gray-800" id="stat-school-capacity">809
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 flex flex-col justify-center relative overflow-hidden group">
+                        <div
+                            class="absolute -right-6 -top-6 w-24 h-24 bg-orange-100/50 rounded-full blur-xl group-hover:bg-orange-200/60 transition-colors">
+                        </div>
+                        <div class="flex items-center gap-4 relative z-10">
+                            <div
+                                class="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white text-2xl shadow-lg shadow-orange-200/50">
+                                <i class="fas fa-percent"></i></div>
+                            <div>
+                                <p class="text-base text-gray-500 font-bold mb-1">نسبة الغياب</p>
+                                <h3 class="text-3xl md:text-4xl font-black text-orange-500" id="stat-absent-percent">0%
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 flex flex-col justify-center relative overflow-hidden group">
+                        <div
+                            class="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100/50 rounded-full blur-xl group-hover:bg-emerald-200/60 transition-colors">
+                        </div>
+                        <div class="flex items-center gap-4 relative z-10">
+                            <div
+                                class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center text-white text-2xl shadow-lg shadow-emerald-200/50">
+                                <i class="fas fa-check-circle"></i></div>
+                            <div>
+                                <p class="text-base text-gray-500 font-bold mb-1">نسبة الحضور</p>
+                                <h3 class="text-3xl md:text-4xl font-black text-emerald-500" id="stat-present-percent">
+                                    100%</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Area -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="glass-panel p-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <i
+                                class="fas fa-chart-bar text-indigo-500 bg-indigo-50 w-8 h-8 rounded-full flex items-center justify-center"></i>
+                            <h3 class="text-lg font-black text-gray-800">الغياب حسب كل صف</h3>
+                        </div>
+                        <div class="relative h-72 w-full"><canvas id="chart-classes"></canvas></div>
+                    </div>
+                    <div class="glass-panel p-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <i
+                                class="fas fa-chart-pie text-purple-500 bg-purple-50 w-8 h-8 rounded-full flex items-center justify-center"></i>
+                            <h3 class="text-lg font-black text-gray-800">تركز الغياب في المراحل (النسبة)</h3>
+                        </div>
+                        <div class="relative h-72 w-full flex justify-center"><canvas id="chart-levels"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6">
+                    <div class="flex items-center gap-3 mb-6">
+                        <i
+                            class="fas fa-chart-area text-blue-500 bg-blue-50 w-8 h-8 rounded-full flex items-center justify-center"></i>
+                        <h3 class="text-lg font-black text-gray-800">منحنى توجه الغياب خلال الحصص</h3>
+                    </div>
+                    <div class="relative h-64 w-full"><canvas id="chart-periods"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Detailed Report View -->
+            <div id="view-detailed" class="hidden space-y-6 animate-fade">
+                <div class="glass-panel p-6 flex flex-col md:flex-row justify-between gap-4">
+                    <div class="flex flex-col gap-2">
+                        <h2
+                            class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-l from-indigo-800 to-purple-800 flex items-center gap-2">
+                            <i class="fas fa-table text-indigo-500"></i> التقرير المفصل الشامل
+                        </h2>
+                        <p class="text-base font-bold text-gray-500" id="detailed-count">العدد الكلي للنتائج المفلترة: 0
+                        </p>
+                    </div>
+
+                    <div
+                        class="flex flex-wrap items-center gap-3 bg-white/40 p-3 rounded-2xl border border-white/50 w-full lg:w-auto">
+                        <div class="flex-1 min-w-[200px] relative">
+                            <i class="fas fa-search absolute right-3 top-3.5 text-gray-400"></i>
+                            <input type="text" id="filter-search" onkeyup="updateDetailedTable()"
+                                placeholder="بحث بالاسم / المعلم"
+                                class="w-full pl-4 pr-10 py-2.5 bg-white/60 border border-white focus:border-indigo-400 outline-none rounded-xl font-bold transition shadow-sm">
+                        </div>
+                        <div>
+                            <input type="date" id="filter-date" onchange="updateDetailedTable()"
+                                class="px-4 py-2.5 bg-white/60 border border-white focus:border-indigo-400 outline-none rounded-xl font-bold text-gray-700 transition shadow-sm w-[140px]">
+                        </div>
+                        <div>
+                            <select id="filter-class" onchange="updateDetailedTable()"
+                                class="px-4 py-2.5 bg-white/60 border border-white focus:border-indigo-400 outline-none rounded-xl font-bold text-gray-700 transition shadow-sm w-full md:w-[120px]">
+                                <option value="">كل الصفوف</option>
+                            </select>
+                        </div>
+                        <div>
+                            <select id="filter-period" onchange="updateDetailedTable()"
+                                class="px-4 py-2.5 bg-white/60 border border-white focus:border-indigo-400 outline-none rounded-xl font-bold text-gray-700 transition shadow-sm w-full md:w-[120px]">
+                                <option value="">كل الحصص</option>
+                                <option value="1">الحصة 1</option>
+                                <option value="2">الحصة 2</option>
+                                <option value="3">الحصة 3</option>
+                                <option value="4">الحصة 4</option>
+                                <option value="5">الحصة 5</option>
+                                <option value="6">الحصة 6</option>
+                                <option value="7">الحصة 7</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel overflow-hidden border-none p-2">
+                    <div
+                        class="bg-white/50 backdrop-blur-xl rounded-2xl overflow-hidden shadow-inner custom-scrollbar overflow-x-auto max-h-[600px]">
+                        <table class="w-full text-right border-collapse text-base whitespace-nowrap">
+                            <thead class="bg-indigo-900 sticky top-0 z-10 text-white">
+                                <tr>
+                                    <th class="p-4 font-bold tracking-wider">التاريخ</th>
+                                    <th class="p-4 font-bold text-center tracking-wider w-24">الحصة</th>
+                                    <th class="p-4 font-bold tracking-wider w-32">الصف</th>
+                                    <th class="p-4 font-bold tracking-wider">اسم الطالب الغائب</th>
+                                    <th class="p-4 font-bold tracking-wider">مُدخل الغياب (المعلم)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-detailed" class="divide-y divide-gray-200/50">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Numerical Matrix View -->
+            <div id="view-numerical" class="hidden space-y-6 animate-fade">
+                <div class="glass-panel p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white text-xl shadow-lg shadow-teal-200">
+                            <i class="fas fa-th"></i>
+                        </div>
+                        <div>
+                            <h2
+                                class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-l from-emerald-800 to-teal-800">
+                                مصفوفة الغياب العددية</h2>
+                            <p class="text-base font-bold text-gray-500">حصر عددي تفصيلي للغياب حسب الحصة لكل صف</p>
+                        </div>
+                    </div>
+                    <div
+                        class="flex items-center gap-3 no-print bg-white/40 p-2 rounded-2xl border border-white/50 backdrop-blur-md">
+                        <input type="date" id="numDate" onchange="updateNumericalMatrix()"
+                            class="px-4 py-2 rounded-xl bg-white focus:ring-2 focus:ring-teal-400 outline-none font-black text-gray-700 shadow-sm cursor-pointer">
+                        <button onclick="window.print()"
+                            class="bg-gray-800 text-white px-5 py-2 rounded-xl hover:bg-black transition flex items-center gap-2 font-bold shadow-md">
+                            <i class="fas fa-print"></i> طباعة
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-panel overflow-hidden border-none p-2">
+                    <div
+                        class="bg-white/50 backdrop-blur-xl rounded-2xl overflow-hidden shadow-inner custom-scrollbar overflow-x-auto">
+                        <table class="w-full text-center border-collapse text-base whitespace-nowrap">
+                            <thead class="text-white bg-gradient-to-l from-teal-600 to-emerald-600 shadow-sm">
+                                <tr>
+                                    <th class="p-4 border-r border-white/20 font-black">الصف</th>
+                                    <th class="p-4 border-r border-white/20 font-bold">الحصة 1</th>
+                                    <th class="p-4 border-r border-white/20 font-bold">الحصة 2</th>
+                                    <th class="p-4 border-r border-white/20 font-bold">الحصة 3</th>
+                                    <th class="p-4 border-r border-white/20 font-bold">الحصة 4</th>
+                                    <th class="p-4 border-r border-white/20 font-bold">الحصة 5</th>
+                                    <th class="p-4 border-r border-white/20 font-bold">الحصة 6</th>
+                                    <th class="p-4 border-r border-white/20 font-bold">الحصة 7</th>
+                                    <th class="p-4 border-r border-white/20 font-black bg-teal-800/80">إجمالي اليوم</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-numerical" class="divide-y divide-gray-200/50 align-middle text-gray-700">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Leakers View -->
+            <div id="view-leakers" class="hidden space-y-6 animate-fade">
+                <div
+                    class="glass-panel p-6 flex flex-col md:flex-row justify-between items-center gap-4 border border-rose-200/50">
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center text-white text-xl shadow-lg shadow-rose-200">
+                            <i class="fas fa-user-slash"></i>
+                        </div>
+                        <div>
+                            <h2
+                                class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-l from-rose-800 to-red-800">
+                                أكثر الطلاب غياباً وتسرباً</h2>
+                            <p class="text-base font-bold text-gray-500">حصر الطلاب ذوي الحالات المتكررة للغياب</p>
+                        </div>
+                    </div>
+                    <div
+                        class="flex items-center gap-3 no-print bg-white/40 p-2 rounded-2xl border border-white/50 backdrop-blur-md">
+                        <select id="leaker-filter" onchange="updateLeakers()"
+                            class="px-4 py-2 bg-white outline-none focus:ring-2 focus:ring-rose-400 rounded-xl font-bold text-gray-700 shadow-sm transition">
+                            <option value="all">كافة السجلات (طوال العام)</option>
+                            <option value="today">اليوم المحدد فقط</option>
+                        </select>
+                        <input type="date" id="leakerDate" onchange="updateLeakers()"
+                            class="px-4 py-2 bg-white outline-none focus:ring-2 focus:ring-rose-400 rounded-xl font-black text-gray-700 shadow-sm cursor-pointer">
+                    </div>
+                </div>
+
+                <div class="glass-panel overflow-hidden border border-rose-100/50 p-2">
+                    <div
+                        class="bg-white/50 backdrop-blur-xl rounded-2xl overflow-hidden shadow-inner custom-scrollbar overflow-x-auto max-h-[600px]">
+                        <table class="w-full text-right border-collapse text-base whitespace-nowrap">
+                            <thead class="bg-rose-600 text-white sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th class="p-4 font-black w-24 text-center">الترتيب</th>
+                                    <th class="p-4 font-black">اسم الطالب</th>
+                                    <th class="p-4 font-bold">الصف</th>
+                                    <th class="p-4 font-black text-center w-40">مرات إثبات الغياب</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-leakers" class="divide-y divide-rose-100/50">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div> <!-- End views container -->
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbz_Fv_WYg1s25Fz73MXpaRro9Ka3GvkZlwJMvfsGL_aYpNfOq7S3yzbM_N03ZTDShZg/exec";
+
+        let AllRecords = [];
+        let uniqueClasses = [];
+
+        const schoolCapacities = { "الأول": 147, "الثاني": 161, "الثالث": 184, "الرابع": 150, "الخامس": 150, "السادس": 167 };
+        const totalSchoolCapacity = Object.values(schoolCapacities).reduce((a, b) => a + b, 0);
+        document.getElementById('stat-school-capacity').innerText = totalSchoolCapacity;
+
+        Chart.register(ChartDataLabels);
+        Chart.defaults.font.family = "'Tajawal', sans-serif";
+        Chart.defaults.color = '#6b7280';
+        Chart.defaults.plugins.datalabels.color = '#fff';
+        Chart.defaults.plugins.datalabels.font.weight = 'bold';
+        Chart.defaults.plugins.datalabels.font.family = "'Tajawal', sans-serif";
+
+        let charts = { classes: null, levels: null, periods: null };
+
+        async function initApp() {
+            setDatesToToday();
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+
+                AllRecords = data.map(row => {
+                    const getVal = (names) => {
+                        const key = Object.keys(row).find(k => names.some(n => k.includes(n)));
+                        return key ? String(row[key]).trim() : "-";
+                    };
+                    return {
+                        date: fixDateObj(getVal(["تاريخ", "Date"])),
+                        period: extractPeriodNumber(getVal(["حصة", "Period"])),
+                        cls: getVal(["صف", "Class"]),
+                        student: getVal(["طالب", "Student"]),
+                        teacher: getVal(["معلم", "Teacher"]),
+                        raw: row
+                    };
+                }).filter(r => r.student && r.student !== "-" && r.student !== "undefined");
+
+                extractUniqueClasses();
+                populateFilters();
+
+                hideLoading();
+                updateDashboard();
+                updateDetailedTable();
+                updateNumericalMatrix();
+                updateLeakers();
+
+            } catch (e) {
+                console.error("Fetch Data Error: ", e);
+                alert("تعذر جلب البيانات من الخادم، الرجاء التأكد من صحة الرابط.");
+                hideLoading();
+            }
+        }
+
+        function extractUniqueClasses() {
+            let clsSet = new Set(AllRecords.map(r => r.cls).filter(c => c && c !== "-"));
+            uniqueClasses = Array.from(clsSet).sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
+        }
+
+        function populateFilters() {
+            const clsFilter = document.getElementById('filter-class');
+            uniqueClasses.forEach(c => {
+                let opt = document.createElement('option');
+                opt.value = opt.innerText = c;
+                clsFilter.appendChild(opt);
+            });
+        }
+
+        function getTodayYYYYMMDD() {
+            const d = new Date();
+            let m = d.getMonth() + 1, day = d.getDate();
+            return `${d.getFullYear()}-${m < 10 ? '0' + m : m}-${day < 10 ? '0' + day : day}`;
+        }
+        function setDatesToToday() {
+            const today = getTodayYYYYMMDD();
+            ['dashDate', 'filter-date', 'numDate', 'leakerDate'].forEach(id => {
+                document.getElementById(id).value = today;
+            });
+            document.getElementById('printDate').innerText = "تم إصداره في: " + new Date().toLocaleDateString('ar-BH') + " " + new Date().toLocaleTimeString('ar-BH');
+        }
+        function changeDate(elementId, delta) {
+            const input = document.getElementById(elementId);
+            if (!input.value) input.value = getTodayYYYYMMDD();
+            let d = new Date(input.value);
+            d.setDate(d.getDate() + delta);
+            let m = d.getMonth() + 1, day = d.getDate();
+            input.value = `${d.getFullYear()}-${m < 10 ? '0' + m : m}-${day < 10 ? '0' + day : day}`;
+            input.dispatchEvent(new Event('change'));
+        }
+        function convertArabicToEnglishNum(str) {
+            if (!str) return "";
+            return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[\u200E\u200F\u061C‎‏]/g, '').trim();
+        }
+        function extractPeriodNumber(str) {
+            if (!str || str === "-") return "";
+            let s = convertArabicToEnglishNum(str);
+            let digits = s.match(/\d+/);
+            if (digits) return digits[0];
+            if (s.includes("أول") || s.includes("اول")) return "1";
+            if (s.includes("ثاني")) return "2";
+            if (s.includes("ثالث")) return "3";
+            if (s.includes("رابع")) return "4";
+            if (s.includes("خامس")) return "5";
+            if (s.includes("سادس")) return "6";
+            if (s.includes("سابع")) return "7";
+            if (s.includes("ثامن")) return "8";
+            return s;
+        }
+        function fixDateObj(dateStr) {
+            if (!dateStr || dateStr === "-") return "";
+            dateStr = convertArabicToEnglishNum(dateStr);
+            if (dateStr.toString().includes('T')) dateStr = dateStr.split('T')[0];
+            let parts = dateStr.split(/[\/\-\s]+/);
+            if (parts.length >= 3) {
+                if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+            }
+            return dateStr;
+        }
+
+        function switchView(view) {
+            ['dashboard', 'detailed', 'numerical', 'leakers'].forEach(v => {
+                document.getElementById(`view-${v}`).classList.add('hidden');
+                document.getElementById(`btn-${v}`).classList.remove('active');
+            });
+            document.getElementById(`view-${view}`).classList.remove('hidden');
+            document.getElementById(`btn-${view}`).classList.add('active');
+        }
+
+        function showLoading() { document.getElementById('loadingOverlay').style.display = 'flex'; }
+        function hideLoading() {
+            let overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 500);
+            }
+        }
+
+        function updateDashboard() {
+            const targetDate = document.getElementById('dashDate').value;
+            const dayRecords = AllRecords.filter(r => r.date === targetDate);
+
+            let uniqueAbsentSet = new Set(dayRecords.map(r => r.student));
+            let totalAbsentsUnique = uniqueAbsentSet.size;
+
+            let absPercent = totalSchoolCapacity > 0 ? (totalAbsentsUnique / totalSchoolCapacity * 100).toFixed(1) : 0;
+            let presPercent = (100 - absPercent).toFixed(1);
+
+            document.getElementById('stat-total-absent').innerText = totalAbsentsUnique;
+            document.getElementById('stat-absent-percent').innerText = absPercent + "%";
+            document.getElementById('stat-present-percent').innerText = presPercent + "%";
+
+            let absByClassMap = {};
+            uniqueAbsentSet.forEach(sName => {
+                let studentRec = dayRecords.find(r => r.student === sName);
+                if (studentRec) {
+                    absByClassMap[studentRec.cls] = (absByClassMap[studentRec.cls] || 0) + 1;
+                }
+            });
+
+            let absByLevelMap = { "الأول": 0, "الثاني": 0, "الثالث": 0, "الرابع": 0, "الخامس": 0, "السادس": 0, "أخرى": 0 };
+            Object.keys(absByClassMap).forEach(cls => {
+                let match = null;
+                Object.keys(absByLevelMap).forEach(lvl => { if (cls.includes(lvl)) match = lvl; });
+                if (match) absByLevelMap[match] += absByClassMap[cls];
+                else absByLevelMap["أخرى"] += absByClassMap[cls];
+            });
+
+            let absByPeriodMap = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 };
+            dayRecords.forEach(r => {
+                let p = r.period || "أخرى";
+                absByPeriodMap[p] = (absByPeriodMap[p] || 0) + 1;
+            });
+
+            drawBarChart('chart-classes', 'غياب الطلاب حسب الصف', absByClassMap, charts.classes);
+            drawPieChart('chart-levels', absByLevelMap, charts.levels);
+            drawLineChart('chart-periods', absByPeriodMap, charts.periods);
+        }
+
+        function createGradient(ctx, color1, color2) {
+            let gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, color1);
+            gradient.addColorStop(1, color2);
+            return gradient;
+        }
+
+        function drawBarChart(canvasId, label, dataMap, chartRef) {
+            let labels = Object.keys(dataMap).sort();
+            let data = labels.map(l => dataMap[l]);
+
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            let bgGradient = createGradient(ctx, 'rgba(99, 102, 241, 0.9)', 'rgba(168, 85, 247, 0.8)');
+
+            if (chartRef) chartRef.destroy();
+            charts[canvasId.split('-')[1]] = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ label: label, data: data, backgroundColor: bgGradient, borderRadius: 8, borderSkipped: false }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)', drawBorder: false } },
+                        x: { grid: { display: false, drawBorder: false } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: { anchor: 'end', align: 'top', color: '#4b5563', formatter: Math.round, font: { weight: 'bold' } }
+                    }
+                }
+            });
+        }
+
+        function drawLineChart(canvasId, dataMap, chartRef) {
+            let validKeys = ['1', '2', '3', '4', '5', '6', '7'];
+            let labels = validKeys.map(k => "الحصة " + k);
+            let data = validKeys.map(k => dataMap[k] || 0);
+
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            let gradientFill = createGradient(ctx, 'rgba(56, 189, 248, 0.5)', 'rgba(56, 189, 248, 0.05)');
+
+            if (chartRef) chartRef.destroy();
+            charts[canvasId.split('-')[1]] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: labels, datasets: [{ label: 'مرات إثبات الغياب', data: data, borderColor: '#0284c7', backgroundColor: gradientFill, borderWidth: 4, pointBackgroundColor: '#fff', pointBorderColor: '#0284c7', pointBorderWidth: 3, pointRadius: 6, pointHoverRadius: 8, tension: 0.4, fill: true }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)', drawBorder: false } },
+                        x: { grid: { display: false, drawBorder: false } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: { anchor: 'center', align: 'bottom', color: '#fff', backgroundColor: '#0284c7', borderRadius: 4, padding: 6, font: { weight: 'bold' } }
+                    }
+                }
+            });
+        }
+
+        function drawPieChart(canvasId, dataMap, chartRef) {
+            let labels = Object.keys(dataMap).filter(k => dataMap[k] > 0);
+            let data = labels.map(k => dataMap[k]);
+
+            let colors = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#8b5cf6', '#f43f5e', '#0ea5e9'];
+
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (chartRef) chartRef.destroy();
+            charts[canvasId.split('-')[1]] = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 0, hoverOffset: 8 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { position: 'right', labels: { font: { family: 'Tajawal', size: 13 }, usePointStyle: true, padding: 20 } },
+                        datalabels: { color: '#fff', font: { weight: 'bold', size: 14 } }
+                    }
+                }
+            });
+        }
+
+        function updateDetailedTable() {
+            const filterSearch = document.getElementById('filter-search').value.toLowerCase();
+            const filterDate = document.getElementById('filter-date').value;
+            const filterClass = document.getElementById('filter-class').value;
+            const filterPeriod = document.getElementById('filter-period').value;
+
+            let filtered = AllRecords.filter(r => {
+                if (filterDate && r.date !== filterDate) return false;
+                if (filterClass && r.cls !== filterClass) return false;
+                if (filterPeriod && r.period !== filterPeriod) return false;
+                if (filterSearch) {
+                    let combined = `${r.student} ${r.teacher} ${r.cls}`.toLowerCase();
+                    if (!combined.includes(filterSearch)) return false;
+                }
+                return true;
+            });
+
+            filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const tbody = document.getElementById('table-detailed');
+            tbody.innerHTML = "";
+
+            filtered.forEach(r => {
+                let pNumber = parseInt(r.period) || r.period;
+                let periodBadgeColor = 'bg-gray-100 text-gray-700';
+                if (pNumber <= 2) periodBadgeColor = 'bg-blue-100 text-blue-800';
+                else if (pNumber <= 4) periodBadgeColor = 'bg-purple-100 text-purple-800';
+                else if (pNumber <= 6) periodBadgeColor = 'bg-orange-100 text-orange-800';
+                else if (pNumber === 7) periodBadgeColor = 'bg-red-100 text-red-800';
+
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-indigo-50/50 transition-colors duration-200 border-b border-gray-100/50 last:border-0";
+                tr.innerHTML = `
+                    <td class="p-4 text-gray-600 font-medium">${r.date}</td>
+                    <td class="p-4 text-center"><span class="${periodBadgeColor} font-black px-3 py-1 rounded-lg w-10 inline-block shadow-sm">${r.period || "-"}</span></td>
+                    <td class="p-4 text-indigo-700 font-bold whitespace-nowrap"><span class="bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">${r.cls}</span></td>
+                    <td class="p-4 font-black text-gray-800 text-base">${r.student}</td>
+                    <td class="p-4 text-gray-500 font-semibold"><i class="fas fa-user-tie text-gray-300 ml-1"></i> ${r.teacher}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('detailed-count').innerText = " إجمالي النتائج: " + filtered.length;
+        }
+
+        function updateNumericalMatrix() {
+            const numDate = document.getElementById('numDate').value;
+            const dayRecords = AllRecords.filter(r => r.date === numDate);
+
+            let matrix = {};
+            uniqueClasses.forEach(c => { matrix[c] = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, total: 0 }; });
+
+            dayRecords.forEach(r => {
+                if (matrix[r.cls] && r.period >= 1 && r.period <= 7) {
+                    matrix[r.cls][r.period]++;
+                    matrix[r.cls].total++;
+                }
+            });
+
+            const tbody = document.getElementById('table-numerical');
+            tbody.innerHTML = "";
+
+            uniqueClasses.forEach(c => {
+                let row = matrix[c];
+                if (row.total > 0) {
+                    let tr = document.createElement('tr');
+                    tr.className = "hover:bg-teal-50/30 border-b border-gray-100/50 transition duration-200";
+                    tr.innerHTML = `<td class="p-4 bg-teal-50/50 text-teal-900 border-r border-gray-100/50 font-black whitespace-nowrap">${c}</td>`;
+                    for (let i = 1; i <= 7; i++) {
+                        let count = row[i];
+                        let style = count > 0 ? "text-red-500 font-black" : "text-gray-300 font-medium";
+                        tr.innerHTML += `<td class="p-4 border-r border-gray-100/50 ${style}">${count || "-"}</td>`;
+                    }
+                    tr.innerHTML += `<td class="p-4 border-l border-gray-100/50 bg-teal-50/80 font-black text-teal-800">${row.total}</td>`;
+                    tbody.appendChild(tr);
+                }
+            });
+        }
+
+        function updateLeakers() {
+            const filterType = document.getElementById('leaker-filter').value;
+            const targetDate = document.getElementById('leakerDate').value;
+
+            let source = AllRecords;
+            if (filterType === 'today' && targetDate) {
+                source = source.filter(r => r.date === targetDate);
+            }
+
+            let leakerMap = {};
+            source.forEach(r => {
+                let key = r.student;
+                if (!leakerMap[key]) {
+                    leakerMap[key] = { count: 0, student: r.student, cls: r.cls };
+                }
+                leakerMap[key].count++;
+            });
+
+            let leakerArray = Object.values(leakerMap).sort((a, b) => b.count - a.count);
+
+            const tbody = document.getElementById('table-leakers');
+            tbody.innerHTML = "";
+
+            if (leakerArray.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-gray-400 font-bold text-lg"><i class="fas fa-box-open mb-3 text-3xl block"></i> لا يوجد بيانات لعرضها</td></tr>`;
+            }
+
+            leakerArray.forEach((lk, idx) => {
+                let tr = document.createElement('tr');
+                tr.className = idx < 3 ? "bg-rose-50/40 hover:bg-rose-50/80 transition duration-300 border-b border-rose-100/50" : "hover:bg-gray-50/50 transition duration-200 border-b border-gray-100/50";
+
+                let rankBadge = "";
+                if (idx === 0) rankBadge = `<span class="bg-yellow-400 text-yellow-900 w-8 h-8 inline-flex items-center justify-center rounded-full shadow-md tooltip" title="المركز الأول"><i class="fas fa-trophy"></i></span>`;
+                else if (idx === 1) rankBadge = `<span class="bg-gray-300 text-gray-800 w-8 h-8 inline-flex items-center justify-center rounded-full shadow-md"><i class="fas fa-medal"></i></span>`;
+                else if (idx === 2) rankBadge = `<span class="bg-amber-600 text-white w-8 h-8 inline-flex items-center justify-center rounded-full shadow-md"><i class="fas fa-medal"></i></span>`;
+                else rankBadge = `<span class="text-gray-400 font-black">${idx + 1}</span>`;
+
+                let countColor = idx < 3 ? "bg-red-500 text-white shadow-lg shadow-red-200" : "bg-red-100 text-red-700";
+
+                tr.innerHTML = `
+                    <td class="p-4 text-center align-middle">${rankBadge}</td>
+                    <td class="p-4 text-gray-800 font-black text-lg align-middle">${lk.student}</td>
+                    <td class="p-4 text-indigo-600 font-bold align-middle"><span class="bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">${lk.cls}</span></td>
+                    <td class="p-4 text-center align-middle"><span class="${countColor} px-4 py-1.5 rounded-xl font-black min-w-[3rem] inline-block tracking-widest">${lk.count}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        const firebaseConfig = {
+            authDomain: "submit-e8c66.firebaseapp.com",
+            databaseURL: "https://submit-e8c66-default-rtdb.firebaseio.com",
+            storageBucket: "submit-e8c66.firebasestorage.app",
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+
+        let isInitialLoadStats = true;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initApp();
+            
+            // Real-time synchronization listener
+            firebase.database().ref("system/lastUpdate").on("value", (snap) => {
+                if (isInitialLoadStats) {
+                    isInitialLoadStats = false;
+                } else if (snap.exists()) {
+                    // Refetch data subtly
+                    initApp();
+                }
+            });
+        });
+    </script>
+    <!-- شريط الحقوق السفلي -->
+    <div style="position: fixed; bottom: 0; left: 0; width: 100%; height: 40px; font-family: inherit; background: linear-gradient(135deg, var(--primary, #4f46e5), var(--secondary, #7c3aed)); color: white; display: flex; justify-content: center; align-items: center; z-index: 9990; font-size: 15px; font-weight: bold; box-shadow: 0 -4px 15px rgba(0,0,0,0.1);">
+        برمجة الطالب يحيى حميد | جميع الحقوق محفوظة &copy;
+    </div>
+
+    <!-- Particles Engine -->
+    <script src="particles-module.js"></script>
+    <!-- تسجيل Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
